@@ -1,0 +1,30 @@
+version: '3'
+
+services:
+  osm-tirex:
+    build:
+      context: .
+    image: "osm-tirex"
+    ports:
+      - 8080:80
+      - 8082:8082
+      - 8083:8083
+    #      - 5432:5432
+    volumes:
+      - data:/data/database/
+      - tiles:/data/tiles/
+      - style:/data/style/
+      - config:/data/config/
+      - /home/osm/data/quebec-latest.osm.pbf:/data/region.osm.pbf
+      - /home/osm/data/:/data/pbf/
+    environment:
+      - THREADS=6
+    # command: "debug"
+    # command: "import"
+    command: "run"
+
+volumes:
+  data:
+  tiles:
+  style:
+  config:
