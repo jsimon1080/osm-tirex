@@ -1,27 +1,41 @@
-version: '3'
+version: '3.7'
 
 services:
   osm-tirex:
     build:
       context: .
+      shm_size: '2GB'
+    shm_size: '2GB'
     image: "osm-tirex"
     ports:
-      - 8080:80
-      - 8082:8082
-      - 8083:8083
-    #      - 5432:5432
+      - 8000:80
+      - 8080:8080
+      # - 5432:5432
     volumes:
       - data:/data/database/
       - tiles:/data/tiles/
       - style:/data/style/
       - config:/data/config/
-      - /home/osm/data/quebec-latest.osm.pbf:/data/region.osm.pbf
-      - /home/osm/data/:/data/pbf/
+      - /home/osm/osm-downloads/prince-edward-island.osm.pbf:/data/region.osm.pbf
+      - /home/osm/osm-downloads/:/data/downloads/
     environment:
-      - THREADS=6
-    # command: "debug"
+      # - FLAT_NODES=enabled
+      - THREADS=24
+      - CACHE=4000
+    cpuset: 28-31
+    mem_limit: 16GB
+    # deploy:
+    #     resources:
+    #         limits:
+    #           cpus: '4.00'
+    #           memory: 16GB
+            # reservations:
+            #   cpus: 0.25
+            #   memory: 128M
+    
     # command: "import"
     command: "run"
+    # command: "debug"
 
 volumes:
   data:

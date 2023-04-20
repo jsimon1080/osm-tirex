@@ -5,9 +5,9 @@ set -euo pipefail
 function cartoBuild() {
     # if there is no custom style mounted, then use osm-carto
     if [ ! "$(ls -A /data/style/)" ]; then
-        mv /home/_tirex/src/openstreetmap-carto-backup/* /data/style/
-        rm -fr /home/_tirex/src/openstreetmap-carto-backup/
+        cp -a /home/$USER/src/openstreetmap-carto-backup/* /data/style/
     fi
+    ln -snf /data/style /home/$USER/src/openstreetmap-carto
 
     # carto build
     if [ ! -f /data/style/mapnik.xml ]; then
@@ -16,58 +16,60 @@ function cartoBuild() {
     fi
 }
 
-function createPostgresConfig() {
-    cp /data/config/postgresql.custom.conf /etc/postgresql/15/main/conf.d/postgresql.custom.conf
-    # sudo -u postgres echo "autovacuum = $AUTOVACUUM" >> /etc/postgresql/15/main/conf.d/postgresql.custom.conf
-    cat /etc/postgresql/15/main/conf.d/postgresql.custom.conf
+function addDBConfig() {
+    ln -snf /data/config/postgresql.custom.conf /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
+    # cat /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
+
+    if [ -d /data/database/postgres ]; then
+        rm -fr /var/lib/postgresql/$POSTGRESQL_VER/main
+    else
+        mv /var/lib/postgresql/$POSTGRESQL_VER/main /data/database/postgres
+    fi
+    ln -snf /data/database/postgres /var/lib/postgresql/$POSTGRESQL_VER/main
+
+    # Ensure that database directory is in right state
+    chown $USER: /data/database/
+    chown -R postgres: /var/lib/postgresql /data/database/postgres/
+    if [ ! -f /data/database/postgres/PG_VERSION ]; then
+        sudo -u postgres /usr/lib/postgresql/$POSTGRESQL_VER/bin/pg_ctl -D /data/database/postgres/ initdb -o "--locale C.UTF-8"
+    fi
+
+    # Configure PosgtreSQL
+    #   && echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/$POSTGRESQL_VER/main/pg_hba.conf \
+    #   && echo "host all all ::/0 md5" >> /etc/postgresql/$POSTGRESQL_VER/main/pg_hba.conf
 }
 
 function setupGisDB() {
-    if [ ! "$( sudo -u postgres psql -XtAc "SELECT usename FROM pg_user WHERE usename='_tirex'" )" ]; then
-        sudo -u postgres createuser _tirex
+    if [ ! "$( sudo -u postgres psql -XtAc "SELECT usename FROM pg_user WHERE usename='$USER'" )" ]; then
+        sudo -u postgres createuser $USER
         if [ ! "$( sudo -u postgres psql -XtAc "SELECT 1 FROM pg_database WHERE datname='gis'" )" ]; then
-            sudo -u postgres createdb -E UTF8 -O _tirex gis
+            sudo -u postgres createdb -E UTF8 -O $USER gis
             sudo -u postgres psql -d gis -c "CREATE EXTENSION postgis;"
             sudo -u postgres psql -d gis -c "CREATE EXTENSION hstore;"
-            sudo -u postgres psql -d gis -c "ALTER TABLE geometry_columns OWNER TO _tirex;"
-            sudo -u postgres psql -d gis -c "ALTER TABLE geography_columns OWNER TO _tirex;"
-            sudo -u postgres psql -d gis -c "ALTER TABLE spatial_ref_sys OWNER TO _tirex;"
+            sudo -u postgres psql -d gis -c "ALTER TABLE geometry_columns OWNER TO $USER;"
+            sudo -u postgres psql -d gis -c "ALTER TABLE geography_columns OWNER TO $USER;"
+            sudo -u postgres psql -d gis -c "ALTER TABLE spatial_ref_sys OWNER TO $USER;"
+            sudo -u postgres psql -c "ALTER USER $USER PASSWORD '${PGPASSWORD:-$USER}'"
         fi
     fi
 }
 
-function setPostgresPassword() {
-    sudo -u postgres psql -c "ALTER USER _tirex PASSWORD '${PGPASSWORD:-_tirex}'"
-}
-
 function setupTirex() {
-    if [ ! -f /etc/tirex/renderer/mapnik/region.conf ]; then
-        sed -i -E "s,#master_rendering_timeout=,master_rendering_timeout=," /etc/tirex/tirex.conf
-        sed -i -E "s,#backend_manager_alive_timeout=,backend_manager_alive_timeout=," /etc/tirex/tirex.conf
-        sed -i -E "s,procs=[0-9]+,procs=${THREADS:-4}," /etc/tirex/renderer/mapnik.conf
-        sed -i -E "s,fontdir=.*,fontdir=/usr/share/fonts," /etc/tirex/renderer/mapnik.conf
+    rm -fr /etc/tirex/renderer/test* /etc/tirex/renderer/mapnik/tirex-example.conf
 
-        mv /etc/tirex/renderer/mapnik/tirex-example.conf /etc/tirex/renderer/mapnik/region.conf
-        sed -i -E "s,name=.*,name=region," /etc/tirex/renderer/mapnik/region.conf
-        sed -i -E "s,tiledir=.*,tiledir=/data/tiles/region," /etc/tirex/renderer/mapnik/region.conf
-        sed -i -E "s,maxz=.*,maxz=20," /etc/tirex/renderer/mapnik/region.conf
-        sed -i -E "s,mapfile=.*,mapfile=/data/style/mapnik.xml," /etc/tirex/renderer/mapnik/region.conf
-        
-        mkdir -p /etc/tirex/disabled
-        mv /etc/tirex/renderer/test* /etc/tirex/disabled
+    ln -snf /data/config/tirex.conf /etc/tirex/tirex.conf
+    ln -snf /data/config/mapnik.conf /etc/tirex/renderer/mapnik.conf
+    ln -snf /data/config/region.conf /etc/tirex/renderer/mapnik/region.conf
 
-        rm -fr /data/tiles/tirex-example
-        mkdir -p /data/tiles/region
-        chown -R _tirex: /data/tiles
+    rm -fr /var/cache/tirex/tiles && ln -snf /data/tiles /var/cache/tirex/tiles
+    mkdir -p /data/tiles/region
+    chown -R $USER: /data/tiles
 
-        mv /usr/share/tirex/example-map /usr/share/tirex/region
-        sed -i -E "s,/tiles/tirex-example/,/," /usr/share/tirex/region/index.html
-        sed -i -E "s,maxZoom: [0-9]+,maxZoom: 20," /usr/share/tirex/region/index.html
-
-        a2disconf tirex tirex-example-map
-        cp /data/config/tirex-region.conf /etc/apache2/conf-available
-        a2enconf tirex-region
-    fi
+    mv /usr/share/tirex/example-map /usr/share/tirex/region
+    ln -snf /data/config/index.html /usr/share/tirex/region/index.html
+    ln -snf /data/config/tirex-region.conf /etc/apache2/conf-available/tirex-region.conf
+    a2disconf tirex tirex-example-map
+    a2enconf tirex-region
 }
 
 
@@ -98,23 +100,13 @@ if [ "$1" == "import" ]; then
         exit 1
     fi
 
-
     # Setup carto
     cartoBuild
     
-    # Ensure that database directory is in right state
-    chown _tirex: /data/database/
-    mkdir -p /data/database/postgres/
-    chown -R postgres: /var/lib/postgresql /data/database/postgres/
-    if [ ! -f /data/database/postgres/PG_VERSION ]; then
-        sudo -u postgres /usr/lib/postgresql/15/bin/pg_ctl -D /data/database/postgres/ initdb -o "--locale C.UTF-8"
-    fi
-
     # Initialize PostgreSQL
-    createPostgresConfig
+    addDBConfig
     service postgresql start
     setupGisDB
-    setPostgresPassword
 
     # Download Luxembourg as sample if no data is provided
     if [ ! -f /data/region.osm.pbf ] && [ -z "${DOWNLOAD_PBF:-}" ]; then
@@ -132,18 +124,10 @@ if [ "$1" == "import" ]; then
         fi
     fi
 
-    if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
-        # determine and set osmosis_replication_timestamp (for consecutive updates)
-        REPLICATION_TIMESTAMP=`osmium fileinfo -g header.option.osmosis_replication_timestamp /data/region.osm.pbf`
-
-        # initial setup of osmosis workspace (for consecutive updates)
-        sudo -E -u _tirex openstreetmap-tiles-update-expire.sh $REPLICATION_TIMESTAMP
-    fi
-
     # copy polygon file if available
     if [ -f /data/region.poly ]; then
         cp /data/region.poly /data/database/region.poly
-        chown _tirex: /data/database/region.poly
+        chown $USER: /data/database/region.poly
     fi
 
     # flat-nodes
@@ -152,31 +136,14 @@ if [ "$1" == "import" ]; then
     fi
 
     # Import data
-    if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
-        sudo -E -u _tirex osm2pgsql -d gis --create --slim -G --hstore  \
-        --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua}  \
-        --number-processes ${THREADS:-4}  \
-        --cache ${CACHE:-2500} \
-        -S /data/style/${NAME_STYLE:-openstreetmap-carto.style}  \
-        /data/region.osm.pbf  \
-        ${OSM2PGSQL_EXTRA_ARGS:-}  \
-        ;
-    else
-        sudo -E -u _tirex osm2pgsql -d gis --create --slim -G --hstore --drop  \
-        --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua}  \
-        --number-processes ${THREADS:-4}  \
-        --cache ${CACHE:-2500} \
-        -S /data/style/${NAME_STYLE:-openstreetmap-carto.style}  \
-        /data/region.osm.pbf  \
-        ${OSM2PGSQL_EXTRA_ARGS:-}  \
-        ;
-    fi
-
-    # old flat-nodes dir
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-        mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
-        chown _tirex: /data/database/flat_nodes.bin
-    fi
+    sudo -E -u $USER osm2pgsql -d gis --create --slim -G --hstore  \
+    --tag-transform-script /data/style/${NAME_LUA:-openstreetmap-carto.lua}  \
+    --number-processes ${THREADS:-4}  \
+    --cache ${CACHE:-2500} \
+    -S /data/style/${NAME_STYLE:-openstreetmap-carto.style}  \
+    /data/region.osm.pbf  \
+    ${OSM2PGSQL_EXTRA_ARGS:-}  \
+    ;
 
     # Create indexes
     if [ -f /data/style/${NAME_SQL:-indexes.sql} ]; then
@@ -184,22 +151,22 @@ if [ "$1" == "import" ]; then
     fi
 
     #Import external data
-    chown -R _tirex: /home/_tirex/src/ /data/style/
+    chown -R $USER: /home/$USER/src/ /data/style/
     if [ -f /data/style/scripts/get-external-data.py ] && [ -f /data/style/external-data.yml ]; then
         cd /data/style
-        sudo -E -u _tirex python3 /data/style/scripts/get-external-data.py -C -c /data/style/external-data.yml -D /data/style/data
+        sudo -E -u $USER python3 /data/style/scripts/get-external-data.py -C -c /data/style/external-data.yml -D /data/style/data
     fi
+
+    # Register that data has changed for mod_tile caching purposes
+    sudo -u $USER touch /data/database/planet-import-complete
 
     #Import missing fonts
     if [ -f /data/style/scripts/get-fonts.sh ] && [ $(ls /data/style/fonts | wc -l) -lt 104 ]; then
         cd /data/style
-        sudo -E -u _tirex /data/style/scripts/get-fonts.sh
+        sudo -E -u $USER /data/style/scripts/get-fonts.sh
         cd fonts
         for i in *; do [[ ! -n `find /usr/share/fonts -name $i` ]] && cp $i /usr/share/fonts; done
     fi
-
-    # Register that data has changed for mod_tile caching purposes
-    sudo -u _tirex touch /data/database/planet-import-complete
 
     service postgresql stop
 
@@ -213,18 +180,6 @@ if [ "$1" == "run" ]; then
     # Clean /tmp
     rm -rf /tmp/*
 
-    # migrate old files
-    if [ -f /data/database/PG_VERSION ] && ! [ -d /data/database/postgres/ ]; then
-        mkdir /data/database/postgres/
-        mv /data/database/* /data/database/postgres/
-    fi
-    if [ -f /nodes/flat_nodes.bin ] && ! [ -f /data/database/flat_nodes.bin ]; then
-        mv /nodes/flat_nodes.bin /data/database/flat_nodes.bin
-    fi
-    if [ -f /data/tiles/data.poly ] && ! [ -f /data/database/region.poly ]; then
-        mv /data/tiles/data.poly /data/database/region.poly
-    fi
-
     # sync planet-import-complete file
     if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
         cp /data/tiles/planet-import-complete /data/database/planet-import-complete
@@ -233,32 +188,18 @@ if [ "$1" == "run" ]; then
         cp /data/database/planet-import-complete /data/tiles/planet-import-complete
     fi
 
-    # Fix postgres data privileges
-    chown -R postgres: /var/lib/postgresql/ /data/database/postgres/
-
     # # Configure Apache CORS
     # if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then
     #     echo "export APACHE_ARGUMENTS='-D ALLOW_CORS'" >> /etc/apache2/envvars
     # fi
 
+    # Initialize PostgreSQL
+    addDBConfig
+    service postgresql start
+
     # Configure tirex
     setupTirex
     service apache2 restart
-
-    # Initialize PostgreSQL and Apache
-    createPostgresConfig
-    service postgresql start
-    setPostgresPassword
-
-    # start cron job to trigger consecutive updates
-    if [ "${UPDATES:-}" == "enabled" ] || [ "${UPDATES:-}" == "1" ]; then
-        /etc/init.d/cron start
-        sudo -u _tirex touch /var/log/tiles/run.log; tail -f /var/log/tiles/run.log >> /proc/1/fd/1 &
-        sudo -u _tirex touch /var/log/tiles/osmosis.log; tail -f /var/log/tiles/osmosis.log >> /proc/1/fd/1 &
-        sudo -u _tirex touch /var/log/tiles/expiry.log; tail -f /var/log/tiles/expiry.log >> /proc/1/fd/1 &
-        sudo -u _tirex touch /var/log/tiles/osm2pgsql.log; tail -f /var/log/tiles/osm2pgsql.log >> /proc/1/fd/1 &
-
-    fi
 
     # Run while handling docker stop's SIGTERM
     stop_handler() {
@@ -267,8 +208,8 @@ if [ "$1" == "run" ]; then
     trap stop_handler SIGTERM
 
     sleep infinity &
-    sudo -u _tirex /usr/bin/tirex-master -f &
-    sudo -u _tirex /usr/bin/tirex-backend-manager -f &
+    sudo -u $USER /usr/bin/tirex-master -f &
+    sudo -u $USER /usr/bin/tirex-backend-manager -f &
     child=$!
     wait "$child"
 
