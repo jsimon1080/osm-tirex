@@ -1,3 +1,22 @@
+# osm-tirex by jsimon1080
+
+This is based on openstreetmap-tile-server, available on GitHub, by Alexander Overvoorde.
+
+I have modified it to run with tirex instead of renderd.
+
+It also compiles the latest version of osm2pgsql during the creation of the Docker image.
+
+When trying to run the Docker, if it fails with this error :
++ sudo -u postgres psql -c 'ALTER USER _tirex PASSWORD '\''_tirex'\'''
+
+It usually means that there was a problem with the "import" part and the database is not created properly.
+
+
+
+
+
+
+
 # openstreetmap-tile-server
 
 [![Build Status](https://travis-ci.org/Overv/openstreetmap-tile-server.svg?branch=master)](https://travis-ci.org/Overv/openstreetmap-tile-server) [![](https://images.microbadger.com/badges/image/overv/openstreetmap-tile-server.svg)](https://microbadger.com/images/overv/openstreetmap-tile-server "openstreetmap-tile-server")

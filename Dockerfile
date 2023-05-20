@@ -67,6 +67,8 @@ FROM ubuntu:22.04 AS final
 ENV DEBIAN_FRONTEND=noninteractive
 ENV USER=_tirex
 ENV POSTGRESQL_VER=15
+ENV LANG C.UTF-8
+ENV LC_ALL C.UTF-8
 
 ARG TZ=America/Montreal
 
@@ -74,21 +76,23 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  sudo \
-  curl \
-  wget
+  ca-certificates gnupg lsb-release locales \
+  sudo wget curl \
+  git-core unzip unrar \
+  && locale-gen $LANG && update-locale LANG=$LANG \
+  && sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
+  && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
+  && apt-get update && apt-get -y upgrade
 
 # Add postgresql-$POSTGRESQL_VER repository
-RUN echo "deb http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
-  && wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | tee /etc/apt/trusted.gpg.d/pgdg.asc
+# RUN echo "deb http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+#   && wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | tee /etc/apt/trusted.gpg.d/pgdg.asc
 
 # Get packages
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
   apache2 \
   cron \
-  curl \
   dateutils \
   fonts-hanazono \
   fonts-noto-cjk \
@@ -117,6 +121,7 @@ RUN apt-get update \
   tirex \
   tirex-example-map \
   systemctl \
+  vim \
   && apt-get clean autoclean \
   && apt-get autoremove --yes \
   && rm -rf /var/lib/{apt,dpkg,cache,log}/
