@@ -9,7 +9,7 @@ services:
     image: "osm-tirex"
     ports:
       - 8000:80
-      - 8090:8080
+      - 8080:8080
       # - 5432:5432
     volumes:
       - data:/data/database/
@@ -33,8 +33,8 @@ services:
       #   cpus: 0.25
       #   memory: 128M
 
-      # command: "import"
-    command: "run"
+    command: "import"
+    # command: "run"
     # command: "debug"
 
 volumes:

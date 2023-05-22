@@ -9,7 +9,7 @@ RUN apt-get update \
 ###########################################################################################################
 
 FROM compiler-common AS compiler-stylesheet
-RUN cd ~ \
+RUN cd $HOME \
   && git clone --depth 1 https://github.com/gravitystorm/openstreetmap-carto.git \
   && cd openstreetmap-carto \
   && sed -i 's/, "unifont Medium", "Unifont Upper Medium"//g' style/fonts.mss \
@@ -21,7 +21,7 @@ RUN cd ~ \
 ###########################################################################################################
 
 FROM compiler-common AS compiler-helper-script
-RUN cd ~ \
+RUN cd $HOME \
   && git clone --depth 1 https://github.com/zverik/regional \
   && cd regional \
   && chmod u+x trim_osc.py \
@@ -47,7 +47,7 @@ RUN apt-get update \
   liblua5.3-dev \
   pandoc
 
-RUN cd ~ \
+RUN cd $HOME \
   && git clone --depth 1 https://github.com/openstreetmap/osm2pgsql \
   && cd osm2pgsql \
   && mkdir -p build \

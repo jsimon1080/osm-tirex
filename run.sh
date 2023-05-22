@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-function cartoBuild() {
+cartoBuild() {
     # if there is no custom style mounted, then use osm-carto
     if [ ! "$(ls -A /data/style/)" ]; then
         cp -a /home/$USER/src/openstreetmap-carto-backup/* /data/style/
@@ -16,7 +16,7 @@ function cartoBuild() {
     fi
 }
 
-function addDBConfig() {
+addDBConfig() {
     ln -snf /data/config/postgresql.custom.conf /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
     # cat /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
 
@@ -39,7 +39,7 @@ function addDBConfig() {
     #   && echo "host all all ::/0 md5" >> /etc/postgresql/$POSTGRESQL_VER/main/pg_hba.conf
 }
 
-function setupGisDB() {
+setupGisDB() {
     if [ ! "$( sudo -u postgres psql -XtAc "SELECT usename FROM pg_user WHERE usename='$USER'" )" ]; then
         sudo -u postgres createuser $USER
         if [ ! "$( sudo -u postgres psql -XtAc "SELECT 1 FROM pg_database WHERE datname='gis'" )" ]; then
@@ -54,7 +54,7 @@ function setupGisDB() {
     fi
 }
 
-function setupTirex() {
+setupTirex() {
     rm -fr /etc/tirex/renderer/test* /etc/tirex/renderer/mapnik/tirex-example.conf
 
     ln -snf /data/config/tirex.conf /etc/tirex/tirex.conf
@@ -180,11 +180,11 @@ if [ "$1" == "run" ]; then
     # Clean /tmp
     rm -rf /tmp/*
 
-    # sync planet-import-complete file
+    # sync planet-import-complete files
     if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
         cp /data/tiles/planet-import-complete /data/database/planet-import-complete
     fi
-    if ! [ -f /data/tiles/planet-import-complete ] && [ -f /data/database/planet-import-complete ]; then
+    if [ -f /data/database/planet-import-complete ] && ! [ -f /data/tiles/planet-import-complete ]; then
         cp /data/database/planet-import-complete /data/tiles/planet-import-complete
     fi
 
