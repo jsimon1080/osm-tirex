@@ -2,14 +2,58 @@
 
 This is based on openstreetmap-tile-server, available on GitHub, by Alexander Overvoorde.
 
-I have modified it to run with tirex instead of renderd.
+I have modified it to run with tirex instead of renderd. It also compiles the latest version of osm2pgsql during the creation of the Docker image.
 
-It also compiles the latest version of osm2pgsql during the creation of the Docker image.
+There are 6 main components being installed in the Docker image to get this to work :
+  - PostgreSQL
+  - osm2pgsql
+  - openstreetmap-carto
+  - Apache2
+  - mod_tile
+  - tirex
+
+The configuration files are in the "config" sub-directory and are being copied inside the docker image during the Docker building process.
+
+The "L.tileLayer" parameter in the 'config/index.html' file needs to be modified to target the right hostname and port depending on your setup.
+
+A lot of performance and RAM tweaking can be done in the following configuration files :
+  - config/mapnik.conf
+  - config/postgresql.custom.conf
+  - config/tirex.conf
+
+
+# setup
+Download the region file in "osm.pbf" format that you want from Geofabrik's free download server :
+  https://download.geofabrik.de/
+
+* Since the import process can take a very long time (even days for the whole planet on a decently fast computer), it is recommanded to start
+  by testing with a small region.
+
+Edit the docker-compose.yml file to map "/data/region.osm.pbf" to the file you downloaded in the volumes section. For example :
+      - /path/to/downloaded/region-latest.osm.pbf:/data/region.osm.pbf
+
+Also make sure only the "import" command is commented out.
+
+Run the following command from the directory where you cloned the osm-tirex GitHub repository :
+  docker compose up --build osm-tirex
+
+Once the import process is completed, uncomment only the "run" command from the docker-compose.yml file and run the previous command again.
+
+If you want to start the Docker container in the background, start it with the following command :
+  docker compose up --build -d osm-tirex
+ 
+To start a shell in the Docker container, run the following command :
+  docker compose exec osm-tirex bash
+
+
+
+
+# Possible errors
 
 When trying to run the Docker, if it fails with this error :
 + sudo -u postgres psql -c 'ALTER USER _tirex PASSWORD '\''_tirex'\'''
 
-It usually means that there was a problem with the "import" part and the database is not created properly.
+It usually means that there was a problem with the "import" part and the database has not been created properly.
 
 
 

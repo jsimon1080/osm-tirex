@@ -20,10 +20,10 @@ addDBConfig() {
     ln -snf /data/config/postgresql.custom.conf /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
     # cat /etc/postgresql/$POSTGRESQL_VER/main/conf.d/postgresql.custom.conf
 
-    if [ -d /data/database/postgres ]; then
-        rm -fr /var/lib/postgresql/$POSTGRESQL_VER/main
-    else
+    if [ ! -d /data/database/postgres ]; then
         mv /var/lib/postgresql/$POSTGRESQL_VER/main /data/database/postgres
+    else
+        rm -fr /var/lib/postgresql/$POSTGRESQL_VER/main
     fi
     ln -snf /data/database/postgres /var/lib/postgresql/$POSTGRESQL_VER/main
 
@@ -65,7 +65,10 @@ setupTirex() {
     mkdir -p /data/tiles/region
     chown -R $USER: /data/tiles
 
-    mv /usr/share/tirex/example-map /usr/share/tirex/region
+    if [ ! -d /usr/share/tirex/region ]; then
+        mv /usr/share/tirex/example-map /usr/share/tirex/region
+    fi
+    
     ln -snf /data/config/index.html /usr/share/tirex/region/index.html
     ln -snf /data/config/tirex-region.conf /etc/apache2/conf-available/tirex-region.conf
     a2disconf tirex tirex-example-map
@@ -93,10 +96,15 @@ set -x
 
 
 if [ "$1" == "import" ]; then
-    # Make sure the import is not already done before overwriting
+    # Give an error if the import is already done and exit to avoid overwriting the database.
     if [ -f /data/database/planet-import-complete ]; then
-        echo "WARNING: /data/database/planet-import-complete already exists."
+        set -
+        sleep 0.1
+        echo ""
+        echo "ERROR: /data/database/planet-import-complete already exists."
         echo "Delete this file if you want to redo the import."
+        echo "Location with the default Docker configuration : /var/lib/docker/volumes/osm-tirex_data/_data/"
+        echo ""
         exit 1
     fi
 
@@ -107,6 +115,21 @@ if [ "$1" == "import" ]; then
     addDBConfig
     service postgresql start
     setupGisDB
+
+    #Import external data
+    chown -R $USER: /home/$USER/src/ /data/style/
+    if [ -f /data/style/scripts/get-external-data.py ] && [ -f /data/style/external-data.yml ]; then
+        cd /data/style
+        sudo -E -u $USER python3 /data/style/scripts/get-external-data.py -C -c /data/style/external-data.yml -D /data/style/data
+    fi
+
+    #Import missing fonts
+    if [ -f /data/style/scripts/get-fonts.sh ] && [ $(ls /data/style/fonts | wc -l) -lt 104 ]; then
+        cd /data/style
+        sudo -E -u $USER /data/style/scripts/get-fonts.sh
+        cd fonts
+        for i in *; do [[ ! -n `find /usr/share/fonts -name $i` ]] && cp $i /usr/share/fonts; done
+    fi
 
     # Download Luxembourg as sample if no data is provided
     if [ ! -f /data/region.osm.pbf ] && [ -z "${DOWNLOAD_PBF:-}" ]; then
@@ -150,23 +173,8 @@ if [ "$1" == "import" ]; then
         sudo -E -u postgres psql -d gis -f /data/style/${NAME_SQL:-indexes.sql}
     fi
 
-    #Import external data
-    chown -R $USER: /home/$USER/src/ /data/style/
-    if [ -f /data/style/scripts/get-external-data.py ] && [ -f /data/style/external-data.yml ]; then
-        cd /data/style
-        sudo -E -u $USER python3 /data/style/scripts/get-external-data.py -C -c /data/style/external-data.yml -D /data/style/data
-    fi
-
-    # Register that data has changed for mod_tile caching purposes
+    # Register that data has changed for mod_tile caching purposes and indicate that the import is completed
     sudo -u $USER touch /data/database/planet-import-complete
-
-    #Import missing fonts
-    if [ -f /data/style/scripts/get-fonts.sh ] && [ $(ls /data/style/fonts | wc -l) -lt 104 ]; then
-        cd /data/style
-        sudo -E -u $USER /data/style/scripts/get-fonts.sh
-        cd fonts
-        for i in *; do [[ ! -n `find /usr/share/fonts -name $i` ]] && cp $i /usr/share/fonts; done
-    fi
 
     service postgresql stop
 
@@ -174,19 +182,31 @@ if [ "$1" == "import" ]; then
 fi
 
 if [ "$1" == "run" ]; then
+    # Warn about missing planet-import-complete file and exit.
+    if [ ! -f /data/database/planet-import-complete ]; then
+        set -
+        sleep 0.1
+        echo ""
+        echo "WARNING: /data/database/planet-import-complete is missing."
+        echo "This usually means that the import process did non complete successfully."
+        echo "Use the 'command import' statement in the docker-compose.yml file."
+        echo ""
+        exit 1
+    fi
+
+    # sync planet-import-complete files
+    if [ -f /data/tiles/planet-import-complete ] && [ ! -f /data/database/planet-import-complete ]; then
+        cp /data/tiles/planet-import-complete /data/database/planet-import-complete
+    fi
+    if [ -f /data/database/planet-import-complete ] && [ ! -f /data/tiles/planet-import-complete ]; then
+        cp /data/database/planet-import-complete /data/tiles/planet-import-complete
+    fi
+
     # Setup carto
     cartoBuild
     
     # Clean /tmp
     rm -rf /tmp/*
-
-    # sync planet-import-complete files
-    if [ -f /data/tiles/planet-import-complete ] && ! [ -f /data/database/planet-import-complete ]; then
-        cp /data/tiles/planet-import-complete /data/database/planet-import-complete
-    fi
-    if [ -f /data/database/planet-import-complete ] && ! [ -f /data/tiles/planet-import-complete ]; then
-        cp /data/database/planet-import-complete /data/tiles/planet-import-complete
-    fi
 
     # # Configure Apache CORS
     # if [ "${ALLOW_CORS:-}" == "enabled" ] || [ "${ALLOW_CORS:-}" == "1" ]; then

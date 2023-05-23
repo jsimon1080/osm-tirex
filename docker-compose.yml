@@ -16,8 +16,8 @@ services:
       - tiles:/data/tiles/
       - style:/data/style/
       - config:/data/config/
-      - /home/osm/osm-downloads/prince-edward-island-latest.osm.pbf:/data/region.osm.pbf
-      - /home/osm/osm-downloads/:/data/downloads/
+      - /tmp/prince-edward-island-latest.osm.pbf:/data/region.osm.pbf
+      # - /home/osm/osm-downloads/:/data/downloads/
     environment:
       # - FLAT_NODES=enabled
       - THREADS=4
