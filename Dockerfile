@@ -67,6 +67,7 @@ FROM ubuntu:22.04 AS final
 ENV DEBIAN_FRONTEND=noninteractive
 ENV USER=_tirex
 ENV POSTGRESQL_VER=15
+ENV PGDATA=/var/lib/postgresql/$POSTGRESQL_VER/main
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
 
