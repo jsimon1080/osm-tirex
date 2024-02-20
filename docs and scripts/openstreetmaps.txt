@@ -1,0 +1,165 @@
+On client machines...
+
+netsh interface portproxy reset
+netsh interface portproxy add v4tov4 listenport=3000 listenaddress=127.0.0.1 connectport=8080 connectaddress=ECT01144
+netsh interface portproxy add v4tov4 listenport=3000 listenaddress=127.0.0.1 connectport=8080 connectaddress=192.168.1.140
+netsh interface portproxy show all
+
+
+https://ircama.github.io/osm-carto-tutorials/tile-server-ubuntu/
+https://github.com/openstreetmap/osm2pgsql
+https://github.com/mapnik/mapnik/
+https://github.com/openstreetmap/mod_tile
+https://github.com/openstreetmap/tirex
+
+
+# verify indexes
+sudo -u postgres psql
+\c gis
+SELECT relname, indexrelname, idx_scan, idx_tup_read, idx_tup_fetch 
+FROM pg_stat_all_indexes 
+WHERE schemaname = 'public' order by 1;
+
+
+
+sudo -u postgres createuser -s $USER
+createdb gis --encoding="UTF8" --lc-collate="en_GB.UTF-8" --lc-ctype="en_GB.UTF-8" --template=template0
+psql -d gis -c 'CREATE EXTENSION postgis; CREATE EXTENSION hstore;'
+
+# To put DB on another drive...
+
+sudo mkdir /mnt/db # Suppose this is the tablespace location
+sudo chown postgres:postgres /mnt/db
+psql -U postgres -h $HOSTNAME -c "CREATE TABLESPACE gists LOCATION '/mnt/db'"
+psql -U postgres -h $HOSTNAME -c "ALTER DATABASE gis SET TABLESPACE gists"
+
+
+psql -d gis -c 'create user osm;grant all privileges on database gis to osm;'
+psql -d gis -c 'create user "www-data";grant all privileges on database gis to "www-data";'
+
+ALTER DATABASE gis OWNER TO _renderd;
+
+psql -d gis -c 'ALTER TABLE geometry_columns OWNER TO _renderd;'
+psql -d gis -c 'ALTER TABLE spatial_ref_sys OWNER TO  _renderd;'
+psql -d gis -c 'ALTER TABLE geography_columns OWNER TO  _renderd;'
+
+
+export POSTGRES_USER=postgres
+export PG_MAINTENANCE_WORK_MEM=4GB
+export PG_WORK_MEM=1GB
+export psql=psql
+
+psql -c "ALTER SYSTEM SET work_mem='${PG_WORK_MEM:-16MB}';"
+psql -c "ALTER SYSTEM SET maintenance_work_mem='${PG_MAINTENANCE_WORK_MEM:-256MB}';"
+
+
+
+
+https://www.percona.com/blog/2018/08/29/tune-linux-kernel-parameters-for-postgresql-optimization/#:~:text=SHMMAX%20is%20a%20kernel%20parameter,of%20System%20V%20shared%20memory.
+
+
+postgresql.custom.conf.tmpl
+=====
+
+max_connections = 250
+
+shared_buffers = 10GB
+maintenance_work_mem = 4GB
+work_mem = 1GB
+temp_buffers = 32MB
+
+wal_level = minimal
+min_wal_size = 1GB
+max_wal_size = 2GB
+wal_buffers = 1MB
+wal_writer_delay = 500ms
+max_wal_senders = 0             # max number of walsender processes
+
+effective_cache_size = 20GB
+
+synchronous_commit = off
+
+checkpoint_timeout = 15min
+checkpoint_completion_target = 0.9
+
+default_statistics_target = 10000
+
+autovacuum = off
+
+#listen_addresses = '*'
+
+=====
+
+
+
+export PGDATA=/var/lib/postgresql/15/main
+
+#!/bin/bash
+pid=`head -1 $PGDATA/postmaster.pid`
+echo "Pid:            $pid"
+peak=`grep ^VmPeak /proc/$pid/status | awk '{ print $2 }'`
+echo "VmPeak:            $peak kB"
+hps=`grep ^Hugepagesize /proc/meminfo | awk '{ print $2 }'`
+echo "Hugepagesize:   $hps kB"
+hp=$((peak/hps))
+echo Set Huge Pages:     $hp
+
+
+cat /proc/meminfo | grep -i huge
+
+To test...
+CREATE TABLE foo(a INTEGER);
+INSERT INTO foo VALUES(generate_Series(1,10000000));
+
+
+vm.swappiness (default = 60)
+m.overcommit_memory (default = 0)
+vm.overcommit_ratio (default = 50)
+vm.dirty_background_ratio / vm.dirty_background_bytes
+vm.dirty_ratio / dirty_bytes
+
+
+/etc/sysctl.d/30-postgresql-shm.conf
+vm.swappiness=40
+vm.overcommit_memory=2
+vm.nr_hugepages=(huge page number shown above)
+
+
+sudo sysctl -p /etc/sysctl.d/30-postgresql-shm.conf
+
+
+export OSM2PGSQL_CACHE=15000
+export OSM2PGSQL_NUMPROC=24
+export OSM2PGSQL_DATAFILE=FILE_TO_IMPORT
+
+*If not enough RAM, add --slim --drop.
+*Use --create to start from scratch.
+
+osm2pgsql \
+--cache $OSM2PGSQL_CACHE \
+--number-processes $OSM2PGSQL_NUMPROC \
+--hstore \
+--multi-geometry \
+--database gis \
+--style ~/src/openstreetmap-carto/openstreetmap-carto.style \
+--tag-transform-script ~/src/openstreetmap-carto/openstreetmap-carto.lua \
+$OSM2PGSQL_DATAFILE
+
+scripts/indexes.py | psql -d gis
+
+
+To list all tables available in the gis database, issue the following command:
+
+psql -d gis -c "\dt+"
+
+The database shall include the rels, ways and nodes tables (created with the --slim mode of osm2pgsql) in order to allow updates.
+
+
+
+apt-cache depends mapnik-reference | grep '[ |]Depends: [^<]' | cut -d: -f2 | tr -d ' ' | xargs sudo apt --reinstall install -y
+
+dpkg -S /path
+
+
+
+tirex-batch -d -p 1 --count-only map=region bbox=-76,45,-70,47 z=0-12

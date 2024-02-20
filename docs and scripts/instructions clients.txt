@@ -1,0 +1,25 @@
+0- S'assurer de désactiver d'abord la redirection avec le "script netsh-osm-redirect OFF.cmd".
+
+1- Installer "Cellebrite Offline Maps Service"
+   *** Assurez-vous que la redirection avec "netsh" soit désactivée avant d'installer le logiciel
+   avec le script "netsh-osm-redirect OFF.cmd", sinon il utilisera un autre port que 3000. ***
+  
+2- Arrêter et désactiver le service "TileServer" dans l'application "Services" de Windows.
+
+3- Placer le fichier "mbtiles.maps" de 11kb dans "C:\ProgramData\TileServerData".
+
+4- Exécuter le script "netsh-osm-redirect ON.cmd" en mode administrateur (le paramètre se conserve au redémarrage).
+
+5- Dans Physical Analyzer et Cellebrite Reader, activer l'option "offline maps" qui devrait pointer sur "http://127.0.0.1:3000".*
+
+6- Dans AXIOM, pointer le "offline maps server" vers "http://127.0.0.1:3000".*
+
+
+*Si le port est différent de 3000 dans Physical Analyzer, vous pouvez modifier la commande dans "netsh-osm-redirect ON.cmd" en conséquence et mettre le même port dans AXIOM.
+
+
+Il est possible de tester le fonctionnement avec un navigateur internet aux adresses suivantes :
+
+http://127.0.0.1:3000/tirex-region/
+
+http://ect01144:8080/tirex-region/
